@@ -5,8 +5,6 @@ A multi-currency Budget vs Actual and year-end forecasting model built in Excel.
 > **Data note:** all data in this project is fictional and was created for demonstration.
 > **Requires Excel 2021 or Microsoft 365** (the model uses XLOOKUP, UNIQUE and SORT). Earlier versions will show `#NAME?` errors.
 
-![Summary sheet](images/summary.png)
-
 ## Headline Results (Base Scenario)
 * **Full-year budget:** USD 330,900
 * **Full-year forecast:** USD 270,873 (USD 60,027 or 18.1% under budget)
@@ -33,8 +31,6 @@ Even the Worst case ends 15.1% under budget.
 | Marketing (MKT) | 50,600 | 30,375.14 | 65,800 | 40,500.19 | -25,299.81 | -38.4% | Within tolerance |
 | Sales (SAL) | 55,100 | 44,623.27 | 74,900 | 59,497.69 | -15,402.31 | -20.6% | Within tolerance |
 | **Total** | **252,000** | **203,154.55** | **330,900** | **270,872.73** | **-60,027.27** | **-18.1%** | **Within tolerance** |
-
-![Forecast vs Budget chart](images/forecast-chart.png)
 
 ## How the Model Works
 
