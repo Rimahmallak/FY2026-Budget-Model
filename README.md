@@ -1,5 +1,7 @@
 # Multi-Currency Budget vs. Actual Forecasting Model (FY2026)
 
+**[Download the Excel model](https://github.com/Rimahmallak/FY2026-Budget-Model/raw/main/FY2026_Budget_vs_Actual_Model.xlsx)**
+
 A multi-currency Budget vs Actual and year-end forecasting model built in Excel. It cleans a raw expense ledger, converts local-currency amounts to USD using monthly exchange rates, compares year-to-date spending with budget by department, and forecasts the full year under three scenarios (Best / Base / Worst).
 
 > **Data note:** all data in this project is fictional and was created for demonstration.
