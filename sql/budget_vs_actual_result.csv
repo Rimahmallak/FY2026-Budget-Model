@@ -1,0 +1,7 @@
+dept_code,budget_usd,actual_usd,variance_usd,variance_pct,status
+FIN,47700.0,44517.07,-3182.93,-0.0667,Within tolerance
+HR,47900.0,38655.09,-9244.91,-0.193,Within tolerance
+IT,50700.0,44983.98,-5716.02,-0.1127,Within tolerance
+MKT,50600.0,30375.14,-20224.86,-0.3997,Within tolerance
+SAL,55100.0,44623.27,-10476.73,-0.1901,Within tolerance
+Total,252000.0,203154.55,-48845.45,-0.1938,Within tolerance
