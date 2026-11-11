@@ -2,13 +2,15 @@
 
 An Excel model that compares departmental spending with budget across three currencies (USD, EUR, LBP), converts everything to USD at monthly rates, reports year-to-date variances and forecasts full-year spending under three scenarios.
 
-The project was built in two stages:
+The project was built in three stages:
 1. **v1: the core model built by hand with formulas:** cleaning, FX conversion, variance reporting, forecasting and reconciliation checks.
 2. **v2: an automated Power Query pipeline added later:** the same ledger cleaning and FX conversion, made refreshable from monthly exports and reconciled to v1 with zero difference.
+3. **v3: SQL added before the Power Query stage:** budget vs actual pulled directly from a database with a SQL query, loaded into the workbook with Power Query and reconciled to v1 with zero difference.
 
 📥 **[Download the Excel model](https://github.com/Rimahmallak/FY2026-Budget-Model/raw/main/FY2026_Budget_vs_Actual_Model.xlsx)**
 
 > All data is fictional. Actuals: January–September 2026. Budget: January–December 2026.
+> When opening the file, Excel may show *"External data connections have been disabled"*. All results display without enabling it; refreshing needs the original source files.
 
 ---
 
@@ -19,8 +21,16 @@ The project was built in two stages:
 | **Scope** | 5 departments · 3 currencies · 150 ledger transactions · 12-month budget |
 | **Reporting currency** | USD (local amount ÷ monthly rate, local units per 1 USD) |
 | **Outputs** | YTD budget vs actual, monthly grids, full-year forecast, Best / Base / Worst scenarios, written key findings |
-| **Controls** | Reconciliation checks with a single "All checks passed" flag; Power Query output reconciled to the formula model |
-| **Tools** | Excel (dynamic arrays, XLOOKUP, SUMIFS, Tables, named inputs, data validation), Power Query |
+| **Controls** | Reconciliation checks with a single "All checks passed" flag; Power Query and SQL outputs reconciled to the formula model |
+| **Tools** | Excel (dynamic arrays, XLOOKUP, SUMIFS, Tables, named inputs, data validation) · Power Query · SQL (SQLite) |
+
+### Three stages, one answer
+| Check (YTD to 30 Sep 2026) | v1 Excel | v2 Power Query | v3 SQL |
+|---|---|---|---|
+| Transactions | 150 | 150 | 150 |
+| Actual spend (USD) | 203,154.55 | 203,154.55 | 203,154.55 |
+| Budget (USD) | 252,000.00 | – | 252,000.00 |
+| Variance % | −19.38% | – | −19.38% |
 
 ---
 
@@ -44,6 +54,7 @@ The project was built in two stages:
 | **Ledger** | Raw expenses plus cleaning columns, exchange rate and USD amount (`tblLedger`) |
 | **Budget, Rates, Departments** | Source tables (`tblBudget`, `tblRates`, `tblDept`) |
 | **Ledger_PQ** | Power Query output and reconciliation (added in v2, see Part 2) |
+| **Report_SQL** | SQL budget vs actual loaded with Power Query (added in v3, see Part 3) |
 
 ### What was done by hand
 - **General ledger cleaning with helper columns:** mixed text/real dates converted to real dates; department and currency codes trimmed and upper-cased (`UPPER(TRIM())`); duplicate expenses removed (152 → 150 rows).
@@ -65,6 +76,7 @@ The project was built in two stages:
 - Forecast total vs (YTD actual + remaining forecast)
 - Selected scenario vs forecast table total
 - Full-year budget vs total of the budget table
+- SQL report total vs formula report total (added in v3)
 - **All checks passed:** a single OK / CHECK flag
 
 ### Limitations
@@ -119,14 +131,58 @@ The Report, Forecast and Summary sheets still read the v1 formula ledger (`tblLe
 
 ---
 
+## Part 3: SQL before Power Query (v3, November 2026)
+
+### Why
+In most organisations the ledger is not received as files: it sits in the accounting system's database. v3 adds the step that comes **before** Power Query: a SQL query pulls the data from the database, joins the ledger with FX rates and budget, and returns budget vs actual by department. Power Query then loads that result into the workbook.
+
+**Pipeline:** Database → SQL query → CSV → Power Query (`qReportSQL`) → **Report_SQL** sheet
+
+### Database (`sql/fy2026_finance.db`, SQLite)
+| Table | Rows | Content | Excel equivalent |
+|---|---|---|---|
+| `gl_transactions` | 150 | Expense ledger, Jan–Sep 2026, in USD / EUR / LBP | `tblLedger` |
+| `fx_rates` | 27 | Monthly rates, local currency per 1 USD | `tblRates` |
+| `budget` | 60 | Monthly budget per department, USD | `tblBudget` |
+| `departments` | 5 | Department names and budget owners | `tblDept` |
+
+### The query (`sql/budget_vs_actual.sql`)
+Built in steps with CTEs (`WITH`), mirroring how the Report sheet is built:
+1. `budget_ytd`: budget per department, January–September
+2. `actual_ytd`: ledger converted to USD at each month's rate (join on currency **and** month), rounded per transaction to match Excel
+3. `dept_rows`: the two summaries joined on department (each side totalled first, so nothing is double-counted)
+4. `all_rows`: department rows plus a Total row (`UNION ALL`)
+5. Final step: variance, variance % (ratio of totals, `NULLIF` to avoid dividing by zero) and status (`CASE`, same rule as the Excel model)
+
+The result is saved as `sql/budget_vs_actual_result.csv` and loaded with Power Query into `tblReportSQL` on **Report_SQL**.
+
+### Result
+| Dept | Budget USD | Actual USD | Variance USD | Variance % | Status |
+|---|---:|---:|---:|---:|---|
+| FIN | 47,700.00 | 44,517.07 | −3,182.93 | −6.67% | Within tolerance |
+| HR | 47,900.00 | 38,655.09 | −9,244.91 | −19.30% | Within tolerance |
+| IT | 50,700.00 | 44,983.98 | −5,716.02 | −11.27% | Within tolerance |
+| MKT | 50,600.00 | 30,375.14 | −20,224.86 | −39.97% | Within tolerance |
+| SAL | 55,100.00 | 44,623.27 | −10,476.73 | −19.01% | Within tolerance |
+| **Total** | **252,000.00** | **203,154.55** | **−48,845.45** | **−19.38%** | Within tolerance |
+
+### Controls
+A row on the **Checks** sheet subtracts the formula Report total from the SQL Report total. It returns **0** and is included in **All checks passed**.
+
+### Note on running it
+To run the query yourself, open `sql/fy2026_finance.db` in any SQLite tool (a browser-based SQLite viewer or DB Browser for SQLite) and run `budget_vs_actual.sql`. **Report_SQL** is a snapshot: to update it, re-run the query, export the result to CSV in the source folder, then **Data > Refresh All**.
+
+---
+
 ## Version history
 | Version | Date | Changes |
 |---|---|---|
 | v1 | Nov 2026 | Formula-based model: ledger cleaning, FX conversion, variance report, forecast, scenarios, checks |
 | v2 | Nov 2026 | Power Query pipeline: folder-based monthly import, automated cleaning, de-duplication, FX merge, reconciliation to v1 |
+| v3 | Nov 2026 | SQL stage before Power Query: budget vs actual queried from a SQLite database, loaded with Power Query (`Report_SQL`), reconciled to v1 in the Checks sheet |
 
 ## Next
-Planned: SQL for querying ledger data, Power BI dashboard, Python (pandas) for data processing.
+Planned: Power BI dashboard, Python (pandas) for data processing.
 
 ---
 
