@@ -2,10 +2,11 @@
 
 An Excel model that compares departmental spending with budget across three currencies (USD, EUR, LBP), converts everything to USD at monthly rates, reports year-to-date variances and forecasts full-year spending under three scenarios.
 
-The project was built in three stages:
+The project was built in four stages:
 1. **v1: the core model built by hand with formulas:** cleaning, FX conversion, variance reporting, forecasting and reconciliation checks.
 2. **v2: an automated Power Query pipeline added later:** the same ledger cleaning and FX conversion, made refreshable from monthly exports and reconciled to v1 with zero difference.
 3. **v3: SQL added before the Power Query stage:** budget vs actual pulled directly from a database with a SQL query, loaded into the workbook with Power Query and reconciled to v1 with zero difference.
+4. **v4: a Power BI dashboard added on top:** the cleaned data modelled as a star schema, every reported number built as a DAX measure, and an interactive budget vs actual page reconciled to v1 with zero difference.
 
 📥 **[Download the Excel model](https://github.com/Rimahmallak/FY2026-Budget-Model/raw/main/FY2026_Budget_vs_Actual_Model.xlsx)**
 
@@ -20,17 +21,17 @@ The project was built in three stages:
 |---|---|
 | **Scope** | 5 departments · 3 currencies · 150 ledger transactions · 12-month budget |
 | **Reporting currency** | USD (local amount ÷ monthly rate, local units per 1 USD) |
-| **Outputs** | YTD budget vs actual, monthly grids, full-year forecast, Best / Base / Worst scenarios, written key findings |
-| **Controls** | Reconciliation checks with a single "All checks passed" flag; Power Query and SQL outputs reconciled to the formula model |
-| **Tools** | Excel (dynamic arrays, XLOOKUP, SUMIFS, Tables, named inputs, data validation) · Power Query · SQL (SQLite) |
+| **Outputs** | YTD budget vs actual, monthly grids, full-year forecast, Best / Base / Worst scenarios, written key findings, interactive Power BI dashboard |
+| **Controls** | Reconciliation checks with a single "All checks passed" flag; Power Query, SQL and Power BI outputs reconciled to the formula model |
+| **Tools** | Excel (dynamic arrays, XLOOKUP, SUMIFS, Tables, named inputs, data validation) · Power Query · SQL (SQLite) · Power BI (data modelling, DAX) |
 
-### Three stages, one answer
-| Check (YTD to 30 Sep 2026) | v1 Excel | v2 Power Query | v3 SQL |
-|---|---|---|---|
-| Transactions | 150 | 150 | 150 |
-| Actual spend (USD) | 203,154.55 | 203,154.55 | 203,154.55 |
-| Budget (USD) | 252,000.00 | – | 252,000.00 |
-| Variance % | −19.38% | – | −19.38% |
+### Four stages, one answer
+| Check (YTD to 30 Sep 2026) | v1 Excel | v2 Power Query | v3 SQL | v4 Power BI |
+|---|---|---|---|---|
+| Transactions | 150 | 150 | 150 | 150 |
+| Actual spend (USD) | 203,154.55 | 203,154.55 | 203,154.55 | 203,154.55 |
+| Budget (USD) | 252,000.00 | – | 252,000.00 | 252,000.00 |
+| Variance % | −19.38% | – | −19.38% | −19.38% |
 
 ---
 
@@ -174,15 +175,87 @@ To run the query yourself, open `sql/fy2026_finance.db` in any SQLite tool (a br
 
 ---
 
+## Part 4: Power BI dashboard (v4, November 2026)
+
+### Why
+The workbook answers the question for whoever opens it; a dashboard lets a budget holder or finance director explore it. v4 loads the cleaned data into Power BI Desktop, models it as a star schema and rebuilds every reported figure as a DAX measure, so one click on a department or a month filters the cards, charts and table together.
+
+**Pipeline:** Excel workbook (Power Query output `tblLedgerPQ`, `tblBudget`, `tblDept`) → Power BI data model → DAX measures → dashboard
+
+![FY2026 Budget vs Actual dashboard in Power BI](powerbi/budget_vs_actual_dashboard.png)
+
+### Data model (star schema)
+| Table | Type | Rows | Content |
+|---|---|---|---|
+| `tblLedgerPQ` | Fact | 150 | Cleaned ledger already in USD (the v2 Power Query output) |
+| `tblBudget` | Fact | 60 | Monthly budget per department |
+| `tblDept` | Dimension | 5 | Departments and budget owners |
+| `Date` | Dimension | 365 | Calendar table built in DAX, marked as the model's date table |
+
+- Each fact table is linked to `tblDept` (on department) and to `Date` (on transaction date / budget month) with **many-to-one, single-direction** relationships, so a department or month filter applies to actuals and budget at the same time.
+- Column types were checked on load; amounts are stored as decimals so cents are never rounded away.
+- Raw amount columns are hidden from the report, and the expense ID and FX-rate columns are set not to summarise, so every number on the report comes from an explicit measure.
+
+### DAX measures
+```DAX
+Date = CALENDAR(DATE(2026,1,1), DATE(2026,12,31))          -- calculated table
+Month Start = DATE(YEAR('Date'[Date]), MONTH('Date'[Date]), 1)   -- column on Date
+
+Actual USD = SUM(tblLedgerPQ[Amount USD])
+
+Total Budget USD = SUM(tblBudget[Budget USD])
+
+Budget YTD =
+VAR Cutoff =
+    CALCULATE ( MAX ( tblLedgerPQ[Date] ), ALL ( tblLedgerPQ ) )
+RETURN
+    CALCULATE ( [Total Budget USD], KEEPFILTERS ( 'Date'[Date] <= Cutoff ) )
+
+Variance = [Actual USD] - [Budget YTD]
+
+Variance % = DIVIDE([Variance], [Budget YTD])
+
+Status =
+VAR Tolerance = 0.10
+RETURN
+    IF (
+        [Budget YTD] = 0,
+        "No budget",
+        IF ( [Variance %] > Tolerance, "Over tolerance", "Within tolerance" )
+    )
+```
+- **Budget YTD** finds the cut-off (last posted transaction) by itself, so the comparison rolls forward when a new month is loaded, the same role as `ActualsThrough` in v1.
+- **Variance %** uses `DIVIDE` (no divide-by-zero errors) and gives a ratio of totals on the Total row, matching v1 and v3.
+- **Status** uses the same rule and labels as the Excel model.
+
+### Dashboard page
+- **KPI cards:** Actual, Budget YTD, Variance, Variance %
+- **Actual vs Budget YTD by Department:** bar chart
+- **Monthly Spend vs Budget:** monthly actuals (columns) against monthly budget (line)
+- **Department Detail:** exact figures with budget owner and Status; Variance % in red for overspend, green for underspend
+- **Department slicer** and cross-filtering between visuals
+
+### Controls
+A separate **Model Check** page holds a reconciliation matrix. Its totals match the v1 Report sheet and the v3 SQL result to the cent: 150 rows · actual 203,154.55 · budget YTD 252,000.00 · variance −48,845.45 · −19.38%.
+
+### Finding the dashboard surfaced
+Year to date, every department is under budget (−19.38% overall). The monthly chart shows that **May and June were overspend months**: in May, IT (+89%), Marketing (+81%), Finance (+28%) and Sales (+9%) all spent above budget. Marketing is the clearest case: about 40% under budget for the year, yet 81% over in May. A single YTD variance hides this; one click on the May column shows it.
+
+### Note on the file
+The `.pbix` file is not included in this repository; the screenshot shows the report and the full measure logic is listed above. Power BI Desktop was used locally (publishing to the Power BI Service requires an organisational account).
+
+---
+
 ## Version history
 | Version | Date | Changes |
 |---|---|---|
 | v1 | Nov 2026 | Formula-based model: ledger cleaning, FX conversion, variance report, forecast, scenarios, checks |
 | v2 | Nov 2026 | Power Query pipeline: folder-based monthly import, automated cleaning, de-duplication, FX merge, reconciliation to v1 |
 | v3 | Nov 2026 | SQL stage before Power Query: budget vs actual queried from a SQLite database, loaded with Power Query (`Report_SQL`), reconciled to v1 in the Checks sheet |
+| v4 | Nov 2026 | Power BI dashboard: star-schema data model, Date table, DAX measures (YTD budget, variance, status), interactive budget vs actual page, reconciled to v1 |
 
 ## Next
-Planned: Power BI dashboard, Python (pandas) for data processing.
+Planned: Python (pandas) for data processing.
 
 ---
 
